@@ -16,6 +16,4 @@ public class UserView {
     String lastname;
     String password;
     String createDate;
-
-
 }

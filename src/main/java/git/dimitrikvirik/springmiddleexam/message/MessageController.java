@@ -24,6 +24,13 @@ public class MessageController {
     List<Map<String, Object>> read(HttpServletRequest request, HttpServletResponse response) {
             return messageServe.read();
     }
+    //For Debugging
+    @GetMapping("/print")
+    void print(HttpServletRequest request) {
+        for (Cookie cookie : request.getCookies()) {
+            System.out.println(cookie.getName() + " " + cookie.getValue());
+        }
+    }
 
     //ვამოწმებთ საჭიროა თუ არა მესიჯების განახლება
     @GetMapping("/check")

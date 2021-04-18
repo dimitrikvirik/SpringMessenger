@@ -27,6 +27,13 @@ public class UserServiceImp implements UserService {
     public String registration(UserView userView, HttpServletRequest request) throws RecordAlreadyExistException {
         try {
             Map<String, Object> parameters = new HashMap<>();
+            userView.setUsername(userView.getUsername().toLowerCase(Locale.ROOT));
+            final String forbiddenPrefix = "deleted";
+
+            if (userView.getUsername().startsWith(forbiddenPrefix)) {
+                throw new UsernameNotAllowedException(
+                        String.format("Username with prefix \"%s\" not allowed", forbiddenPrefix));
+            }
             parameters.put("username", userView.getUsername());
             parameters.put("firstname", userView.getFirstname());
             parameters.put("lastname", userView.getLastname());
