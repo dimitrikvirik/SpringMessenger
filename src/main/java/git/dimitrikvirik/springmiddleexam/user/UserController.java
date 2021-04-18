@@ -10,56 +10,56 @@ import javax.servlet.http.HttpServletRequest;
 
 @RestController
 @RequestMapping("/user")
-@CrossOrigin(origins = "http://localhost:8080")
+@CrossOrigin(origins = "*", allowedHeaders = "*")
 public class UserController {
     @Autowired
     private UserService userService;
 
+    //აბრუნებს შესულ მომხმარებელს
+    @GetMapping
+    UserView getLoggedUser(HttpServletRequest request){
+     try {
+         return userService.getLoggedUser(request);
+     }catch (Exception e){
+         return null;
+     }
+    }
+    @GetMapping("/is-logged")
+    boolean isLogged(HttpServletRequest request){
+        return getLoggedUser(request) != null;
+    }
 
+    @PostMapping("/logout")
+     void logout(HttpServletRequest request){
+        userService.logout(request);
+    }
+
+    //იღებს გარკვეულ მოხმარებელს მოხმარებელს მონაცემთა ბაზებიდან და უბრუნებს ფრონტს
     @GetMapping("/{id}")
-    Object get(@PathVariable int id) {
-        try {
-            return userService.get(id);
-        } catch (RecordNotFoundException e) {
-            return e.getMessage();
-        }
+    String get(@PathVariable int id) {
+            return userService.getUsername(id);
     }
-    @GetMapping("/joined")
-    UserView isUserLogged(HttpServletRequest request){
-    /*  return (UserView) request.getSession().getAttribute("USER_SESSION");*/
-        return null;
-    }
-
+    //მომხმარებლის რეგისტრაცია. ე.წ ჩაწერა ბაზაში
     @PostMapping("/reg")
-    String reg(@RequestBody UserView userView) throws RecordAlreadyExistException {
-        return userService.registration(userView);
-
-      //  addToSession(userView, request);
+    String registration(@RequestBody UserView userView, HttpServletRequest request) throws RecordAlreadyExistException {
+        return userService.registration(userView, request);
     }
+    //მომხმარებლის შესვლა. ე.წ შემოწმება ბაზაში
     @PostMapping("/login")
-    void login(@RequestBody ObjectNode json, HttpServletRequest request){
-        UserView userView =  userService.login(json.get("username").asText(), json.get("password").asText());
+    UserView login(@RequestBody ObjectNode json, HttpServletRequest request){
+        return  userService.login(json.get("username").asText(), json.get("password").asText(), request);
       //  addToSession(userView, request);
     }
-    @PutMapping("/{id}")
-    void edit(@PathVariable int id, @RequestBody UserView userView) throws RecordAlreadyExistException {
-        userService.edit(id, userView);
+    //FIXME
+    //მომხმარებლის სახელი,გვარი ანდა პაროლი შეცვლა ONLY[firstname,lastname, password]. ე.წ მონაცემის განახლება ბაზაში
+    @PutMapping
+    void edit(HttpServletRequest request, @RequestBody UserView userView) throws RecordAlreadyExistException {
+        userService.edit(getLoggedUser(request), userView);
     }
-    @DeleteMapping("/{id}")
-    void delete(@PathVariable int id) {
-        userService.delete(id);
+    //მომხმარებლის წაშლა. ე.წ მონაცემის ამოშლა ბაზიდან
+    @DeleteMapping
+    void delete(HttpServletRequest request) {
+         userService.delete(getLoggedUser(request), request);
     }
-/*
-    void addToSession(UserView userView, HttpServletRequest request){
-       @SuppressWarnings("unchecked")
-        List<String> user = (List<String>) request.getSession().getAttribute("USER_SESSION");
-        if (user == null) {
-            user = new ArrayList<>();
-            request.getSession().setAttribute("USER_SESSION", user);
-        }
-        request.getSession().setAttribute("USER_SESSION", userView);
-        request.getSession().setAttribute("USER_SESSION_LOGIN", true);
-    }
-    */
 
 }

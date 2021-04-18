@@ -1,32 +1,30 @@
 package git.dimitrikvirik.springmiddleexam.user;
 
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
-import com.google.gson.reflect.TypeToken;
+
 import git.dimitrikvirik.springmiddleexam.RecordAlreadyExistException;
 import git.dimitrikvirik.springmiddleexam.RecordNotFoundException;
+import git.dimitrikvirik.springmiddleexam.UsernameNotAllowedException;
 import org.springframework.beans.factory.annotation.Autowired;
-
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.simple.SimpleJdbcInsert;
 import org.springframework.stereotype.Component;
 
+import javax.servlet.http.HttpServletRequest;
 import javax.sql.DataSource;
-import java.io.*;
-import java.sql.SQLException;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 
 @Component
 public class UserServiceImp implements UserService {
-    Gson gson = new GsonBuilder().serializeNulls().setPrettyPrinting().create();
-    String JSON_DATA = "storage/users.json";
+
     @Autowired
     DataSource dataSource;
     @Autowired
     JdbcTemplate jdbcTemplate;
+
     @Override
-    public String registration(UserView userView) throws RecordAlreadyExistException {
+    public String registration(UserView userView, HttpServletRequest request) throws RecordAlreadyExistException {
         try {
             Map<String, Object> parameters = new HashMap<>();
             parameters.put("username", userView.getUsername());
@@ -34,73 +32,90 @@ public class UserServiceImp implements UserService {
             parameters.put("lastname", userView.getLastname());
             parameters.put("password", userView.getPassword());
             System.out.println(userView);
-             userTable().execute(parameters);
-             return "success";
-        }catch (DataAccessException e){
-            if(Objects.requireNonNull(e.getMessage()).contains("duplicate key")){
+            userTable().execute(parameters);
+            return "success";
+        } catch (DataAccessException e) {
+            if (Objects.requireNonNull(e.getMessage()).contains("duplicate key")) {
                 throw new RecordAlreadyExistException(String.format("username %s already exists!", userView.getUsername()));
             }
-           throw new RecordAlreadyExistException(String.format("%s", e.getMessage()));
+            throw new RecordAlreadyExistException(String.format("%s", e.getMessage()));
         }
     }
 
     @Override
-    public UserView login(String username, String password) {
-        List<UserView> userViewList = read();
-        Optional<UserView> userViewOptional = userViewList.stream().filter((e) ->
-                e.getUsername().equals(username) && e.getPassword().equals(password)
-        ).findFirst();
-
-        if (userViewOptional.isPresent()) {
-            return userViewOptional.get();
+    public UserView login(String username, String password, HttpServletRequest request) {
+        UserView userView = jdbcTemplate.queryForObject("SELECT * FROM users WHERE username = ?", new UserViewRowMapper(), username);
+        assert userView != null;
+        if (userView.getPassword().equals(password)) {
+            addToSession(userView, request);
+            return userView;
         }
+        throw new RecordNotFoundException(String.format("User with username %s not found or wrong password", username));
+    }
 
-        throw new RecordNotFoundException(String.format("User with username %s not found", username));
+    @Override
+    public UserView getLoggedUser(HttpServletRequest request) {
+        return get((Integer) request.getSession().getAttribute("USER_SESSION_ID"));
     }
 
     @Override
     public UserView get(int id) {
-       return jdbcTemplate.queryForObject("SELECT * FROM users WHERE user_id = ?",new UserViewRowMapper(), id);
+        return jdbcTemplate.queryForObject("SELECT * FROM users WHERE user_id = ?", new UserViewRowMapper(), id);
     }
 
-    private List<UserView> read() {
-        List<UserView> userViewList = null;
+    @Override
+    public String getUsername(int id) {
+        return get(id).getUsername();
+    }
+
+
+    public void addToSession(UserView userView, HttpServletRequest request) {
         try {
-            userViewList = gson.fromJson(new FileReader(JSON_DATA),
-                    new TypeToken<List<UserView>>() {}.getType());
-        } catch (FileNotFoundException e) {
+            request.getSession().setAttribute("USER_SESSION_ID", userView.getUserId());
+        } catch (Exception e) {
             e.printStackTrace();
         }
-
-        return userViewList == null ? new ArrayList<>() : userViewList;
     }
 
     @Override
-    public void delete(int id) {
-        var userViews = read();
-        Iterator<UserView> userViewIterator = userViews.iterator();
-        while (userViewIterator.hasNext()) {
-            var userView = userViewIterator.next();
-            if (userView.getUserId() == id) {
-                userViewIterator.remove();
-               // write(userViews);
-                return;
-            }
-        }
-        throw new RecordNotFoundException(String.format("Can't find User with id %s", id));
+    public void logout(HttpServletRequest request) {
+        request.getSession().removeAttribute("USER_SESSION_ID");
     }
 
     @Override
-    public void edit(int userId, UserView userView) throws RecordAlreadyExistException {
-        delete(userId);
-        registration(userView);
+    public void delete(UserView loggedUser, HttpServletRequest request) {
+
+        //Random password
+        byte[] array = new byte[10]; // length is bounded by 10
+        new Random().nextBytes(array);
+        String generatedString = new String(array, StandardCharsets.UTF_8);
+
+        Object[] params = {
+                "deleted-" + loggedUser.getUserId(),
+                generatedString,
+                loggedUser.getUserId()
+        };
+        jdbcTemplate.update("UPDATE users set username = ?, password = ? where user_id = ?", params);
+        logout(request);
     }
 
-    private SimpleJdbcInsert userTable(){
+    @Override
+    public void edit(UserView loggedUser, UserView updatedUserView) throws RecordAlreadyExistException {
+
+        Object[] params = {
+                updatedUserView.getFirstname() == null ? loggedUser.getFirstname() : updatedUserView.getFirstname(),
+                updatedUserView.getLastname() == null ? loggedUser.getLastname() : updatedUserView.getLastname(),
+                updatedUserView.getPassword() == null ? loggedUser.getPassword() : updatedUserView.getPassword(),
+                loggedUser.getUserId()};
+
+        jdbcTemplate.update("UPDATE users set firstname = ?, lastname = ?, password = ?  where user_id = ?", params);
+    }
+
+    private SimpleJdbcInsert userTable() {
         return
                 new SimpleJdbcInsert(dataSource).
                         withTableName("users").
-                        usingGeneratedKeyColumns("user_id","create_date");
+                        usingGeneratedKeyColumns("user_id", "create_date");
     }
 
 }

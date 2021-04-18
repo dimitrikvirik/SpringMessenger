@@ -1,17 +1,22 @@
 package git.dimitrikvirik.springmiddleexam.message;
 
+import git.dimitrikvirik.springmiddleexam.RecordAlreadyExistException;
 import git.dimitrikvirik.springmiddleexam.RecordNotFoundException;
 
+import javax.servlet.http.HttpServletRequest;
 import java.util.List;
+import java.util.Map;
 
 public interface MessageService {
-    void write(MessageView messageViews);
+    String write(MessageView messageViews, HttpServletRequest request) throws RecordAlreadyExistException;
 
-    void write(List<MessageView> messageViewList);
+    List<Map<String, Object>> read();
 
-    List<MessageView> read();
+    void edit(int messageId, String text, HttpServletRequest request) throws RecordNotFoundException, RecordAlreadyExistException;
 
-    void edit(int messageId, String text) throws RecordNotFoundException;
+    void delete(int messageId, HttpServletRequest request) throws RecordAlreadyExistException;
 
-    void delete(int messageId);
+    long ActionNumber();
+
+
 }

@@ -1,88 +1,116 @@
 package git.dimitrikvirik.springmiddleexam.message;
 
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
-import com.google.gson.reflect.TypeToken;
 
+import git.dimitrikvirik.springmiddleexam.RecordAlreadyExistException;
 import git.dimitrikvirik.springmiddleexam.RecordNotFoundException;
+import git.dimitrikvirik.springmiddleexam.user.UserService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DataAccessException;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.simple.SimpleJdbcInsert;
 import org.springframework.stereotype.Component;
 
-import java.io.*;
-import java.time.ZoneId;
-import java.time.ZonedDateTime;
-import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.Iterator;
+import javax.servlet.http.HttpServletRequest;
+import javax.sql.DataSource;
+import java.sql.Types;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Component
 public class MessageServiceImp implements MessageService {
-    Gson gson = new GsonBuilder().serializeNulls().setPrettyPrinting().create();
-    String JSON_DATA = "storage/messages.json";
-
+    @Autowired
+    DataSource dataSource;
+    @Autowired
+    JdbcTemplate jdbcTemplate;
+    @Autowired
+    UserService userService;
     @Override
-    public void write(MessageView messageView) {
-        List<MessageView> messageViewList = read();
-        int size = messageViewList.size();
-        messageView.setMessageId(size + 1);
-        ZonedDateTime zonedDateTimeNow = ZonedDateTime.now(ZoneId.of("Asia/Tbilisi"));
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("MM/dd/yyyy HH:mm:ss");
-        String formattedString = zonedDateTimeNow.format(formatter);
-        messageView.setCreateDate(formattedString);
-        messageViewList.add(messageView);
-        write(messageViewList);
-    }
-
-    @Override
-    public void write(List<MessageView> messageViewList) {
-        try (Writer writer = new FileWriter(JSON_DATA)) {
-            gson.toJson(messageViewList, writer);
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-    }
-
-    @Override
-    public List<MessageView> read() {
-        List<MessageView> messageViews = null;
+    public String write(MessageView messageView, HttpServletRequest request) throws RecordAlreadyExistException {
         try {
-            messageViews = gson.fromJson(new FileReader(JSON_DATA), new TypeToken<List<MessageView>>() {
-            }.getType());
-        } catch (FileNotFoundException e) {
-            e.printStackTrace();
+            Map<String, Object> parameters = new HashMap<>();
+            int userId = userService.getLoggedUser(request).getUserId();
+            parameters.put("text", messageView.getText());
+            parameters.put("user_id", userId);
+            messageTable().execute(parameters);
+            addAction(userId, "write");
+            return "success";
+        } catch (DataAccessException e) {
+            throw new RecordAlreadyExistException(String.format("%s", e.getMessage()));
         }
+    }
 
-        return messageViews == null ? new ArrayList<>() : messageViews;
+
+    @Override
+    public List<Map<String, Object>> read() {
+       var list = jdbcTemplate.queryForList("SELECT * FROM messages ORDER BY message_id");
+        for (Map<String, Object> msg : list) {
+            msg.put("username", userService.get(
+                    (Integer) msg.get("user_id")
+            ).getUsername());
+        }
+        return list;
     }
 
     @Override
-    public void edit(int messageId, String text) throws RecordNotFoundException {
-        var messageViews = read();
+    public void edit(int messageId, String text, HttpServletRequest request) throws RecordNotFoundException, RecordAlreadyExistException {
+        int userId = userService.getLoggedUser(request).getUserId();
 
-        for (MessageView messageView : messageViews) {
-            if (messageView.getMessageId() == messageId) {
-                messageView.setText(text);
-                write(messageViews);
-                return;
-            }
-        }
-        throw new RecordNotFoundException(String.format("Message with id %s", messageId));
+        // define query arguments
+        Object[] params = {text, userId, messageId};
+
+        jdbcTemplate.update("UPDATE messages set text = ? where user_id = ? and message_id = ?", params);
+        addAction(userId, "edit");
+
     }
 
     @Override
-    public void delete(int messageId) {
-        var messageViews = read();
+    public void delete(int messageId, HttpServletRequest request) throws RecordAlreadyExistException {
+        int userId = userService.getLoggedUser(request).getUserId();
 
-        Iterator<MessageView> messageViewIterator = messageViews.iterator();
-        while (messageViewIterator.hasNext()) {
-            var messageView = messageViewIterator.next();
-            if (messageView.getMessageId() == messageId) {
-                messageViewIterator.remove();
-                write(messageViews);
-                return;
-            }
+        // define query arguments
+        Object[] params = { userId, messageId };
+
+
+        // define SQL types of the arguments
+        int[] types = {Types.BIGINT, Types.BIGINT};
+
+
+        int rows = jdbcTemplate.update("DELETE FROM messages WHERE user_id = ? AND message_id = ?", params, types);
+        addAction(userId, "delete");
+        System.out.println(rows + " row(s) deleted.");
+
+    }
+
+    @Override
+    public long ActionNumber() {
+
+      var list =  jdbcTemplate.queryForList("SELECT COUNT(*) FROM message_actions");
+      var map = list.get(0);
+     return (long) map.get("count");
+    }
+
+    private SimpleJdbcInsert messageTable() {
+        return
+                new SimpleJdbcInsert(dataSource).
+                        withTableName("messages").
+                        usingGeneratedKeyColumns("message_id", "create_date");
+    }
+    private SimpleJdbcInsert messageActionTable() {
+        return
+                new SimpleJdbcInsert(dataSource).
+                        withTableName("message_actions").
+                        usingGeneratedKeyColumns("message_action_id", "create_date");
+    }
+    private void addAction(int userId, String type) throws RecordAlreadyExistException {
+        try {
+            Map<String, Object> parameters = new HashMap<>();
+            parameters.put("type", type);
+            parameters.put("user_id", userId);
+            messageActionTable().execute(parameters);
+
+        } catch (DataAccessException e) {
+            throw new RecordAlreadyExistException(String.format("%s", e.getMessage()));
         }
-
-        throw new RecordNotFoundException(String.format("Message with id %s", messageId));
     }
 }
