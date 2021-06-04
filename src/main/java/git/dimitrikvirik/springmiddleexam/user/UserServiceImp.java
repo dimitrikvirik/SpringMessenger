@@ -6,6 +6,7 @@ import git.dimitrikvirik.springmiddleexam.RecordNotFoundException;
 import git.dimitrikvirik.springmiddleexam.UsernameNotAllowedException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataAccessException;
+import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.simple.SimpleJdbcInsert;
 import org.springframework.stereotype.Component;
@@ -66,8 +67,12 @@ public class UserServiceImp implements UserService {
     }
 
     @Override
-    public UserView get(int id) {
-        return jdbcTemplate.queryForObject("SELECT * FROM users WHERE user_id = ?", new UserViewRowMapper(), id);
+    public UserView get(int id) throws RecordNotFoundException {
+        try {
+         return    jdbcTemplate.queryForObject("SELECT * FROM users WHERE user_id = ?", new UserViewRowMapper(), id);
+        }catch (EmptyResultDataAccessException e){
+            throw new RecordNotFoundException("Record not found");
+        }
     }
 
     @Override

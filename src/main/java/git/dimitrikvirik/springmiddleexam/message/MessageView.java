@@ -12,12 +12,12 @@ import lombok.Setter;
 public class MessageView {
 
 
-    private int messageId;
-    private int userId;
+    private int message_id;
+    private int user_id;
     private String text;
-    private String createDate;
-    MessageView(int userId, String text) {
-        this.userId = userId;
+    private String create_date;
+    MessageView(int user_id, String text) {
+        this.user_id = user_id;
         this.text = text;
     }
 }
